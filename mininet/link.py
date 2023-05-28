@@ -69,9 +69,12 @@ class Intf( object ):
         "Run a command in our owning node"
         return self.node.cmd( *args, **kwargs )
 
-    def ifconfig( self, *args ):
-        "Configure ourselves using ifconfig"
-        return self.cmd( 'ifconfig', self.name, *args )
+    def ip_link(self, *args):
+        "Configure ourselves using ip link"
+        if self.name in args:
+            return self.cmd( 'ip link', *args )
+        else
+            error( "Error we can only set link options for %s" % self.name )
 
     def setIP( self, ipstr, prefixLen=None ):
         """Set our IP address"""
@@ -79,51 +82,51 @@ class Intf( object ):
         # mechanism and/or the way we specify IP addresses
         if '/' in ipstr:
             self.ip, self.prefixLen = ipstr.split( '/' )
-            return self.ifconfig( ipstr, 'up' )
+            return self.cmd( 'ip addr add', ipstr, 'dev', self.name )
         else:
             if prefixLen is None:
                 raise Exception( 'No prefix length set for IP address %s'
                                  % ( ipstr, ) )
             self.ip, self.prefixLen = ipstr, prefixLen
-            return self.ifconfig( '%s/%s' % ( ipstr, prefixLen ) )
+            return self.cmd( 'ip addr add %s/%s' % ( ipstr, prefixLen ), 'dev', self.name )
 
     def setMAC( self, macstr ):
         """Set the MAC address for an interface.
            macstr: MAC address as string"""
         self.mac = macstr
-        return ( self.ifconfig( 'down' ) +
-                 self.ifconfig( 'hw', 'ether', macstr ) +
-                 self.ifconfig( 'up' ) )
+        return ( self.cmd( 'ip link set dev', self.name, 'down' ) +
+                 self.cmd( 'ip link set dev', self.name, 'address', macstr ) +
+                 self.cmd( 'ip link set dev', self.name, 'up' ) )
 
     _ipMatchRegex = re.compile( r'\d+\.\d+\.\d+\.\d+' )
     _macMatchRegex = re.compile( r'..:..:..:..:..:..' )
 
     def updateIP( self ):
-        "Return updated IP address based on ifconfig"
+        "Return updated IP address based on ip addr show dev"
         # use pexec instead of node.cmd so that we dont read
         # backgrounded output from the cli.
-        ifconfig, _err, _exitCode = self.node.pexec(
-            'ifconfig %s' % self.name )
-        ips = self._ipMatchRegex.findall( ifconfig )
+        ipaddr, _err, _exitCode = self.node.pexec(
+            'ip addr show dev %s' % self.name )
+        ips = self._ipMatchRegex.findall( ipaddr )
         self.ip = ips[ 0 ] if ips else None
         return self.ip
 
     def updateMAC( self ):
-        "Return updated MAC address based on ifconfig"
-        ifconfig = self.ifconfig()
-        macs = self._macMatchRegex.findall( ifconfig )
+        "Return updated MAC address based on ip link show dev"
+        macaddr = self.cmd( 'ip link show dev', self.name )
+        macs = self._macMatchRegex.findall( macaddr )
         self.mac = macs[ 0 ] if macs else None
         return self.mac
 
     # Instead of updating ip and mac separately,
-    # use one ifconfig call to do it simultaneously.
-    # This saves an ifconfig command, which improves performance.
+    # use one ip call to do it simultaneously.
+    # This saves an ip command, which improves performance.
 
     def updateAddr( self ):
-        "Return IP address and MAC address based on ifconfig."
-        ifconfig = self.ifconfig()
-        ips = self._ipMatchRegex.findall( ifconfig )
-        macs = self._macMatchRegex.findall( ifconfig )
+        "Return IP address and MAC address based on ip addr show dev."
+        macandip = self.cmd( 'ip addr show dev', self.name )
+        ips = self._ipMatchRegex.findall( macandip )
+        macs = self._macMatchRegex.findall( macandip )
         self.ip = ips[ 0 ] if ips else None
         self.mac = macs[ 0 ] if macs else None
         return self.ip, self.mac
@@ -139,7 +142,7 @@ class Intf( object ):
     def isUp( self, setUp=False ):
         "Return whether interface is up"
         if setUp:
-            cmdOutput = self.ifconfig( 'up' )
+            cmdOutput = self.cmd( 'ip link set', self.name, 'up' )
             # no output indicates success
             if cmdOutput:
                 error( "Error setting %s up: %s " % ( self.name, cmdOutput ) )
@@ -147,17 +150,17 @@ class Intf( object ):
             else:
                 return True
         else:
-            return "UP" in self.ifconfig()
+            return "state UP" in self.cmd( 'ip link show dev', self.name )
 
     def rename( self, newname ):
         "Rename interface"
         if self.node and self.name in self.node.nameToIntf:
             # rename intf in node's nameToIntf
             self.node.nameToIntf[newname] = self.node.nameToIntf.pop(self.name)
-        self.ifconfig( 'down' )
+        self.cmd( 'ip link set', self.name, 'down' )
         result = self.cmd( 'ip link set', self.name, 'name', newname )
         self.name = newname
-        self.ifconfig( 'up' )
+        self.cmd( 'ip link set', self.name, 'up' )
         return result
 
     # The reason why we configure things in this way is so
@@ -185,12 +188,12 @@ class Intf( object ):
         results[ name ] = result
         return result
 
-    def config( self, mac=None, ip=None, ifconfig=None,
+    def config( self, mac=None, ip=None, ip_link=None,
                 up=True, **_params ):
         """Configure Node according to (optional) parameters:
            mac: MAC address
            ip: IP address
-           ifconfig: arbitrary interface configuration
+           ip_link: arbitrary interface configuration
            Subclasses should override this method and call
            the parent class's config(**params)"""
         # If we were overriding this method, we would call
@@ -200,7 +203,7 @@ class Intf( object ):
         self.setParam( r, 'setMAC', mac=mac )
         self.setParam( r, 'setIP', ip=ip )
         self.setParam( r, 'isUp', up=up )
-        self.setParam( r, 'ifconfig', ifconfig=ifconfig )
+        self.setParam( r, 'ip_link', ip_link=ip_link )
         return r
 
     def delete( self ):
@@ -524,13 +527,13 @@ class Link( object ):
 class OVSIntf( Intf ):
     "Patch interface on an OVSSwitch"
 
-    def ifconfig( self, *args ):
+    def ip_link( self, *args ):
         cmd = ' '.join( args )
-        if cmd == 'up':
+        if 'up' in cmd:
             # OVSIntf is always up
             return
         else:
-            raise Exception( 'OVSIntf cannot do ifconfig ' + cmd )
+            raise Exception( 'OVSIntf cannot do ip link ' + cmd )
 
 
 class OVSLink( Link ):
