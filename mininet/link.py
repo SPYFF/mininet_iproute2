@@ -73,7 +73,7 @@ class Intf( object ):
         "Configure ourselves using ip link"
         if self.name in args:
             return self.cmd( 'ip link', *args )
-        else
+        else:
             error( "Error we can only set link options for %s" % self.name )
 
     def setIP( self, ipstr, prefixLen=None ):
