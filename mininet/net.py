@@ -684,7 +684,7 @@ class Mininet( object ):
                     if received > sent:
                         error( '*** Error: received too many packets' )
                         error( '%s' % result )
-                        node.cmdPrint( 'route' )
+                        node.cmdPrint( 'ip route' )
                         exit( 1 )
                     lost += sent - received
                     output( ( '%s ' % dest.name ) if received else 'X ' )
@@ -926,10 +926,10 @@ class Mininet( object ):
             if len( connections ) == 0:
                 error( 'src and dst not connected: %s %s\n' % ( src, dst) )
             for srcIntf, dstIntf in connections:
-                result = srcIntf.ifconfig( status )
+                result = srcIntf.cmd( 'ip link set dev', srcIntf, status )
                 if result:
                     error( 'link src status change failed: %s\n' % result )
-                result = dstIntf.ifconfig( status )
+                result = dstIntf.cmd( 'ip link set dev', dstIntf, status )
                 if result:
                     error( 'link dst status change failed: %s\n' % result )
 

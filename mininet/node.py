@@ -532,14 +532,14 @@ class Node( object ):
         """Add an ARP entry.
            ip: IP address as string
            mac: MAC address as string"""
-        result = self.cmd( 'arp', '-s', ip, mac )
+        result = self.cmd( 'ip neigh add ', ip, ' lladdr ', mac, ' dev ', self.intfs[ 0 ] )
         return result
 
     def setHostRoute( self, ip, intf ):
         """Add route to host.
            ip: IP address as dotted decimal
            intf: string, interface name"""
-        return self.cmd( 'route add -host', ip, 'dev', intf )
+        return self.cmd( 'ip route add ', ip, 'dev', intf )
 
     def setDefaultRoute( self, intf=None ):
         """Set the default route to go through intf.
@@ -623,7 +623,7 @@ class Node( object ):
         self.setParam( r, 'setIP', ip=ip )
         self.setParam( r, 'setDefaultRoute', defaultRoute=defaultRoute )
         # This should be examined
-        self.cmd( 'ifconfig lo ' + lo )
+        self.cmd( 'ip link set dev lo ' + lo)
         return r
 
     def configDefault( self, **moreParams ):
@@ -675,7 +675,7 @@ class Node( object ):
     @classmethod
     def setup( cls ):
         "Make sure our class dependencies are available"
-        pathCheck( 'mnexec', 'ifconfig', moduleName='Mininet')
+        pathCheck( 'mnexec', 'ip', moduleName='Mininet')
 
 class Host( Node ):
     "A host is simply a Node"
@@ -1165,7 +1165,7 @@ class OVSSwitch( Switch ):
     def attach( self, intf ):
         "Connect a data port"
         self.vsctl( 'add-port', self, intf )
-        self.cmd( 'ifconfig', intf, 'up' )
+        self.cmd( 'ip link set dev ', intf, 'up' )
         self.TCReapply( intf )
 
     def detach( self, intf ):
@@ -1447,7 +1447,7 @@ class Controller( Node ):
         listening = self.cmd( "echo A | telnet -e A %s %d" %
                               ( self.ip, self.port ) )
         if 'Connected' in listening:
-            servers = self.cmd( 'netstat -natp' ).split( '\n' )
+            servers = self.cmd( 'ss -natp' ).split( '\n' )
             pstr = ':%d ' % self.port
             clist = servers[ 0:1 ] + [ s for s in servers if pstr in s ]
             raise Exception( "Please shut down the controller which is"

@@ -704,7 +704,7 @@ def waitListening( client=None, server='127.0.0.1', port=80, timeout=None ):
     result = runCmd( cmd )
     while 'Connected' not in result:
         if 'No route' in result:
-            rtable = runCmd( 'route' )
+            rtable = runCmd( 'ip route' )
             error( 'no route to %s:\n%s' % ( server, rtable ) )
             return False
         if timeout and time >= timeout:
