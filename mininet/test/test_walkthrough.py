@@ -104,7 +104,7 @@ class testWalkthrough( unittest.TestCase ):
         p.expect( self.prompt )
         # Third pattern is a local interface beginning with 'eth' or 'en'
         interfaces = [ r'h1-eth0[@\s]', r's1-eth1[@\s]',
-                       r'[^-](eth|en)\w*\d[@\s]', r'lo[:\s]',
+                       r'[^-](eth|en)\w*\d[:\s]', r'lo[:\s]',
                        self.prompt ]
         # h1 ip link
         p.sendline( 'h1 ip link' )
@@ -304,7 +304,7 @@ class testWalkthrough( unittest.TestCase ):
         p = pexpect.spawn( 'mn --innamespace --switch user' )
         p.expect( self.prompt )
         interfaces = [ r'h1-eth0[@\s]', r's1-eth1[@\s]',
-                       r'[^-](eth|en)\w*\d[@\s]', r'lo[:\s]',
+                       r'[^-](eth|en)\w*\d[:\s]', r'lo[:\s]',
                        self.prompt ]
         p.sendline( 's1 ip link' )
         ifcount = 0
