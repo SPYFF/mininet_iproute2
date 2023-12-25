@@ -139,9 +139,8 @@ class LegacyRouter( Node ):
 
     # pylint: disable=arguments-differ
     def config( self, **_params ):
-        if self.intfs:
-            self.setParam( _params, 'setIP', ip='0.0.0.0' )
-        r = Node.config( self, **_params )
+        par = {'ip':'0.0.0.0'} if self.intfs else _params
+        r = Node.config( self, **par )
         self.cmd('sysctl -w net.ipv4.ip_forward=1')
         return r
 
@@ -1959,7 +1958,7 @@ class MiniEdit( Frame ):
                     # Attach vlan interfaces
                     if 'vlanInterfaces' in opts:
                         for vlanInterface in opts['vlanInterfaces']:
-                            f.write("    "+name+".cmd('ip link add link "+name+"-eth0 name %s.%s" % (name,vlanInterface[1])+" type vlan id "+vlanInterface[1]+"')\n")
+                            f.write("    "+name+".cmd('ip link add link "+name+"-eth0 name %s-eth0.%s" % (name,vlanInterface[1])+" type vlan id "+vlanInterface[1]+"')\n")
                             f.write("    "+name+".cmd('ip addr add "+vlanInterface[0]+" dev "+name+"-eth0."+vlanInterface[1]+"')\n")
                             f.write("    "+name+".cmd('ip link set dev "+name+"-eth0."+vlanInterface[1]+" up')\n")
                     # Run User Defined Start Command
@@ -2941,7 +2940,9 @@ class MiniEdit( Frame ):
                 if 'vlanInterfaces' in opts:
                     for vlanInterface in opts['vlanInterfaces']:
                         info( 'adding vlan interface '+vlanInterface[1], '\n' )
+                        newHost.cmdPrint('ip link add link '+name+'-eth0 name %s-eth0.%s' % (name,vlanInterface[1])+' type vlan id '+vlanInterface[1])
                         newHost.cmdPrint('ip addr add '+vlanInterface[0]+' dev '+name+'-eth0.'+vlanInterface[1])
+                        newHost.cmdPrint('ip link set dev '+name+'-eth0.'+vlanInterface[1]+' up')
                 # Run User Defined Start Command
                 if 'startCommand' in opts:
                     newHost.cmdPrint(opts['startCommand'])
