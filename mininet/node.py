@@ -528,11 +528,13 @@ class Node( object ):
 
     # Routing support
 
-    def setARP( self, ip, mac ):
+    def setARP( self, ip, mac, intf=None ):
         """Add an ARP entry.
            ip: IP address as string
-           mac: MAC address as string"""
-        result = self.cmd( 'ip neigh add ', ip, ' lladdr ', mac, ' dev ', self.intfs[ 0 ] )
+           mac: MAC address as string
+           intf: interface as string or as object"""
+        intfs = self.intf(intf=intf)
+        result = self.cmd( 'ip neigh add ', ip, ' lladdr ', mac, ' dev ', intfs.name )
         return result
 
     def setHostRoute( self, ip, intf ):
@@ -568,13 +570,13 @@ class Node( object ):
            kwargs: any additional arguments for intf.setIP"""
         return self.intf( intf ).setIP( ip, prefixLen, **kwargs )
 
-    def IP( self, intf=None ):
+    def IP( self, intf=None, update=False ):
         "Return IP address of a node or specific interface."
-        return self.intf( intf ).IP()
+        return self.intf( intf ).IP(update)
 
-    def MAC( self, intf=None ):
+    def MAC( self, intf=None, update=False ):
         "Return MAC address of a node or specific interface."
-        return self.intf( intf ).MAC()
+        return self.intf( intf ).MAC(update)
 
     def intfIsUp( self, intf=None ):
         "Check if an interface is up."
@@ -612,7 +614,7 @@ class Node( object ):
         """Configure Node according to (optional) parameters:
            mac: MAC address for default interface
            ip: IP address for default interface
-           ifconfig: arbitrary interface configuration
+           defaultRoute: set defaultRoute for node
            Subclasses should override this method and call
            the parent class's config(**params)"""
         # If we were overriding this method, we would call
@@ -1472,10 +1474,10 @@ class Controller( Node ):
         self.cmd( 'wait %' + self.command )
         super( Controller, self ).stop( *args, **kwargs )
 
-    def IP( self, intf=None ):
+    def IP( self, intf=None, update=False ):
         "Return IP address of the Controller"
         if self.intfs:
-            ip = Node.IP( self, intf )
+            ip = Node.IP( self, intf, update )
         else:
             ip = self.ip
         return ip

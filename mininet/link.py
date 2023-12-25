@@ -27,7 +27,7 @@ Link: basic link class for creating veth pairs
 import re
 
 from mininet.log import info, error, debug
-from mininet.util import makeIntfPair
+from mininet.util import makeIntfPair, isPrefixValid, isIpValid, isMACValid
 
 # Make pylint happy:
 # pylint: disable=too-many-arguments
@@ -69,36 +69,57 @@ class Intf( object ):
         "Run a command in our owning node"
         return self.node.cmd( *args, **kwargs )
 
-    def ip_link(self, *args):
+    def ipLink(self, *args, **kwargs):
         "Configure ourselves using ip link"
-        if self.name in args:
-            return self.cmd( 'ip link', *args )
+        options = kwargs.get( 'options' ) if kwargs and kwargs['options'] else ''
+        name = [arg for arg in args if self.name in arg]
+        if not args or name or (args[0] == 'help' and len(args)==1):
+            return self.cmd( 'ip', options, 'link', *args )
         else:
-            error( "Error we can only set link options for %s" % self.name )
+            raise Exception( "Error we can only set link options for %s\n" % self.name )
+
+    def ipAddress(self, *args, **kwargs):
+        "Configure ourselves using ip address"
+        options = kwargs.get( 'options' ) if kwargs and kwargs['options'] else ''
+        name = [arg for arg in args if self.name in arg]
+        if not args or name or (args[0] == 'help' and len(args)==1):
+            return self.cmd( 'ip', options, 'address', *args )
+        else:
+            raise Exception( "Error we can only set address options for %s\n" % self.name )
 
     def setIP( self, ipstr, prefixLen=None ):
         """Set our IP address"""
         # This is a sign that we should perhaps rethink our prefix
         # mechanism and/or the way we specify IP addresses
+        ip = None
+        pref  = None
         if '/' in ipstr:
-            self.ip, self.prefixLen = ipstr.split( '/' )
-            return self.cmd( 'ip addr add', ipstr, 'dev', self.name )
+            ip, pref = ipstr.split( '/' )
         else:
-            if prefixLen is None:
-                raise Exception( 'No prefix length set for IP address %s'
-                                 % ( ipstr, ) )
-            self.ip, self.prefixLen = ipstr, prefixLen
-            return self.cmd( 'ip addr add %s/%s' % ( ipstr, prefixLen ), 'dev', self.name )
+            ip, pref = ipstr, prefixLen
+
+        if isPrefixValid(pref) and isIpValid(ip):
+            oldip = self.ip
+            oldpref = self.prefixLen
+            self.ip, self.prefixLen = (None, None) if ip == '0.0.0.0' else (ip, pref)
+            if (oldip is not None) and (oldpref is not None):
+                self.cmd( 'ip addr del %s/%s' % ( oldip, oldpref ), 'dev', self.name )
+            return self.cmd( 'ip addr add %s/%s' % ( ip, pref ), 'dev', self.name )
+        else:
+            raise Exception( 'IP address and prefix values cannot set to: %s/%s' % (ip, pref))
 
     def setMAC( self, macstr ):
         """Set the MAC address for an interface.
            macstr: MAC address as string"""
-        self.mac = macstr
-        return ( self.cmd( 'ip link set dev', self.name, 'down' ) +
-                 self.cmd( 'ip link set dev', self.name, 'address', macstr ) +
-                 self.cmd( 'ip link set dev', self.name, 'up' ) )
+        if isMACValid(macstr):
+            self.mac = macstr
+            return ( self.cmd( 'ip link set dev', self.name, 'down' ) +
+                     self.cmd( 'ip link set dev', self.name, 'address', macstr ) +
+                     self.cmd( 'ip link set dev', self.name, 'up' ) ) 
+        else:
+            raise Exception( 'MAC address cannot set to: %s' % macstr)
 
-    _ipMatchRegex = re.compile( r'\d+\.\d+\.\d+\.\d+' )
+    _ipMatchRegex = re.compile( r'\d+\.\d+\.\d+\.\d+\/\d+' )
     _macMatchRegex = re.compile( r'..:..:..:..:..:..' )
 
     def updateIP( self ):
@@ -108,7 +129,7 @@ class Intf( object ):
         ipaddr, _err, _exitCode = self.node.pexec(
             'ip addr show dev %s' % self.name )
         ips = self._ipMatchRegex.findall( ipaddr )
-        self.ip = ips[ 0 ] if ips else None
+        self.ip, self.prefixLen = ips[ 0 ].split( '/' ) if ips else (None, None)
         return self.ip
 
     def updateMAC( self ):
@@ -127,17 +148,17 @@ class Intf( object ):
         macandip = self.cmd( 'ip addr show dev', self.name )
         ips = self._ipMatchRegex.findall( macandip )
         macs = self._macMatchRegex.findall( macandip )
-        self.ip = ips[ 0 ] if ips else None
+        self.ip, self.prefixLen = ips[ 0 ].split( '/' ) if ips else (None, None)
         self.mac = macs[ 0 ] if macs else None
         return self.ip, self.mac
 
-    def IP( self ):
+    def IP( self, update=False ):
         "Return IP address"
-        return self.ip
+        return self.updateIP() if update else self.ip
 
-    def MAC( self ):
+    def MAC( self, update=False ):
         "Return MAC address"
-        return self.mac
+        return self.updateMAC() if update else self.mac
 
     def isUp( self, setUp=False ):
         "Return whether interface is up"
@@ -150,7 +171,8 @@ class Intf( object ):
             else:
                 return True
         else:
-            return "state UP" in self.cmd( 'ip link show dev', self.name )
+            cmdOut = self.cmd( 'ip link show dev', self.name )
+            return "UP" in cmdOut
 
     def rename( self, newname ):
         "Rename interface"
@@ -176,11 +198,18 @@ class Intf( object ):
            param: arg=value (ignore if value=None)
            value may also be list or dict"""
         name, value = list( param.items() )[ 0 ]
+        dic = {}
+        li = []
         f = getattr( self, method, None )
         if not f or value is None:
             return None
         if isinstance( value, list ):
-            result = f( *value )
+            for val in value:
+                if isinstance( val, dict ):
+                    dic.update(val)
+                else:
+                    li.append(val)
+            result = f( *value ) if not dic else f( *li, **dic )
         elif isinstance( value, dict ):
             result = f( **value )
         else:
@@ -188,12 +217,12 @@ class Intf( object ):
         results[ name ] = result
         return result
 
-    def config( self, mac=None, ip=None, ip_link=None,
+    def config( self, mac=None, ip=None, ipLink=None, ipAddress=None,
                 up=True, **_params ):
         """Configure Node according to (optional) parameters:
            mac: MAC address
            ip: IP address
-           ip_link: arbitrary interface configuration
+           ipLink and ipAddress: arbitrary interface configuration
            Subclasses should override this method and call
            the parent class's config(**params)"""
         # If we were overriding this method, we would call
@@ -203,7 +232,8 @@ class Intf( object ):
         self.setParam( r, 'setMAC', mac=mac )
         self.setParam( r, 'setIP', ip=ip )
         self.setParam( r, 'isUp', up=up )
-        self.setParam( r, 'ip_link', ip_link=ip_link )
+        self.setParam( r, 'ipLink', ipLink=ipLink )
+        self.setParam( r, 'ipAddress', ipAddress=ipAddress )
         return r
 
     def delete( self ):
@@ -527,13 +557,14 @@ class Link( object ):
 class OVSIntf( Intf ):
     "Patch interface on an OVSSwitch"
 
-    def ip_link( self, *args ):
+    def ipLink(self, *args, **kwargs):
         cmd = ' '.join( args )
+        options = '%s ' % kwargs.get( 'options' ) if kwargs and kwargs['options'] else ''
         if 'up' in cmd:
             # OVSIntf is always up
             return
         else:
-            raise Exception( 'OVSIntf cannot do ip link ' + cmd )
+            raise Exception( 'OVSIntf cannot do ip %slink %s' % (options,cmd) )
 
 
 class OVSLink( Link ):

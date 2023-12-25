@@ -54,8 +54,8 @@ class LinuxBridge( Switch ):
         super( LinuxBridge, self ).stop( deleteIntfs )
 
     def dpctl( self, *args ):
-        "Run ip link command"
-        return self.cmd( 'ip link', *args )
+        "Run bridge command"
+        return self.cmd( 'bridge', *args )
 
     @classmethod
     def setup( cls ):
